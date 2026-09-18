@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Debate IA vs IA</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #0b141a;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  .app {
+    width: 100%;
+    max-width: 480px;
+    height: 90vh;
+    background: #111b21;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  }
+  .header {
+    background: #202c33;
+    padding: 14px 16px;
+    color: #e9edef;
+  }
+  .header h1 { font-size: 16px; font-weight: 600; }
+  .header .estado {
+    font-size: 12px;
+    color: #8696a0;
+    margin-top: 2px;
+  }
+  .estado.finalizado { color: #00a884; }
+  .estado.en_curso { color: #ffb020; }
+
+  .form-area {
+    padding: 14px 16px;
+    background: #202c33;
+    display: flex;
+    gap: 8px;
+    border-bottom: 1px solid #0b141a;
+  }
+  .form-area input {
+    flex: 1;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: none;
+    background: #2a3942;
+    color: #e9edef;
+    font-size: 14px;
+  }
+  .form-area input::placeholder { color: #8696a0; }
+  .form-area button {
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: none;
+    background: #00a884;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .form-area button:disabled { background: #3b4a54; cursor: not-allowed; }
+
+  .chat {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    background: #0b141a;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .bubble-row { display: flex; }
+  .bubble-row.left { justify-content: flex-start; }
+  .bubble-row.right { justify-content: flex-end; }
+
+  .bubble {
+    max-width: 78%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.35;
+    color: #e9edef;
+    animation: pop .25s ease;
+  }
+  .bubble .autor {
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 3px;
+    display: block;
+  }
+  .bubble-row.left .bubble {
+    background: #202c33;
+    border-top-left-radius: 2px;
+  }
+  .bubble-row.left .autor { color: #53bdeb; }
+  .bubble-row.right .bubble {
+    background: #005c4b;
+    border-top-right-radius: 2px;
+  }
+  .bubble-row.right .autor { color: #8bd7c4; }
+
+  @keyframes pop {
+    from { transform: scale(.85); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  .typing {
+    font-size: 12px;
+    color: #8696a0;
+    padding: 4px 16px 12px;
+    font-style: italic;
+  }
+
+  .empty {
+    color: #8696a0;
+    text-align: center;
+    margin-top: 40px;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="header">
+    <h1 id="tema-titulo">Debate IA vs IA</h1>
+    <div class="estado" id="estado-txt">Escribe un tema para empezar</div>
+  </div>
+
+  <div class="form-area">
+    <input id="tema-input" type="text" placeholder="Ej: ¿Debería ser legal el aborto?" />
+    <button id="btn-iniciar" onclick="iniciarDebate()">Iniciar</button>
+  </div>
+
+  <div class="chat" id="chat">
+    <div class="empty" id="empty-msg">Aún no hay ningún debate iniciado 👀</div>
+  </div>
+  <div class="typing" id="typing" style="display:none;">Escribiendo...</div>
+</div>
+
+<script>
+  const API_BASE = window.location.origin; // usa el mismo host donde corre este archivo
+  let debateId = null;
+  let polling = null;
+  let mensajesRenderizados = 0;
+
+  async function iniciarDebate() {
+    const tema = document.getElementById('tema-input').value.trim();
+    if (!tema) return alert('Escribe un tema primero');
+
+    const btn = document.getElementById('btn-iniciar');
+    btn.disabled = true;
+    btn.textContent = 'Iniciando...';
+
+    document.getElementById('chat').innerHTML = '';
+    document.getElementById('tema-titulo').textContent = tema;
+    document.getElementById('estado-txt').textContent = 'Iniciando debate...';
+    document.getElementById('estado-txt').className = 'estado en_curso';
+    mensajesRenderizados = 0;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/debate/iniciar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tema, maxRondas: 3 }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Error al iniciar');
+
+      debateId = data.debateId;
+      document.getElementById('typing').style.display = 'block';
+
+      if (polling) clearInterval(polling);
+      polling = setInterval(consultarDebate, 1800);
+      consultarDebate();
+    } catch (err) {
+      alert('Error: ' + err.message);
+      btn.disabled = false;
+      btn.textContent = 'Iniciar';
+    }
+  }
+
+  async function consultarDebate() {
+    if (!debateId) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/debate/${debateId}`);
+      const data = await res.json();
+      if (!res.ok) return;
+
+      renderMensajes(data.mensajes);
+
+      const estadoEl = document.getElementById('estado-txt');
+      if (data.estado === 'finalizado') {
+        estadoEl.textContent = '✅ Debate finalizado';
+        estadoEl.className = 'estado finalizado';
+        document.getElementById('typing').style.display = 'none';
+        document.getElementById('btn-iniciar').disabled = false;
+        document.getElementById('btn-iniciar').textContent = 'Iniciar';
+        clearInterval(polling);
+      } else {
+        estadoEl.textContent = `En curso — ronda ${data.rondaActual}/${data.maxRondas}`;
+        estadoEl.className = 'estado en_curso';
+      }
+    } catch (err) {
+      console.error('Error consultando debate:', err);
+    }
+  }
+
+  function renderMensajes(mensajes) {
+    const chat = document.getElementById('chat');
+    const emptyMsg = document.getElementById('empty-msg');
+    if (emptyMsg) emptyMsg.remove();
+
+    if (mensajes.length <= mensajesRenderizados) return;
+
+    for (let i = mensajesRenderizados; i < mensajes.length; i++) {
+      const m = mensajes[i];
+      const esPreguntona = m.autor === 'preguntona';
+
+      const row = document.createElement('div');
+      row.className = `bubble-row ${esPreguntona ? 'left' : 'right'}`;
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.innerHTML = `<span class="autor">${esPreguntona ? '🤔 Preguntón' : '💬 Respondón'}</span>${escapeHtml(m.texto)}`;
+
+      row.appendChild(bubble);
+      chat.appendChild(row);
+    }
+
+    mensajesRenderizados = mensajes.length;
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+</script>
+
+</body>
+</html>

@@ -5,5 +5,7 @@ import validateWebhook from '../middlewares/validateWebhook.js';
 const router = Router();
 
 router.post('/turno', validateWebhook, webhookController.recibirTurno);
+router.post('/iniciar-sesion', webhookController.iniciarSesionRemota);
+router.post('/detener', webhookController.detenerRemoto);
 
 export default router;

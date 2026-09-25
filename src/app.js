@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import connectDB from './config/db.js';
+import env from './config/env.js';
 import debateRoutes from './routes/debateRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
 import errorHandler from './middlewares/errorHandler.js';
@@ -13,7 +14,7 @@ app.use(cors());
 app.use(express.json());
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', mensaje: 'API de debate funcionando' });
+  res.json({ status: 'ok', mensaje: 'API de debate funcionando', rol: env.ROL });
 });
 
 app.use(express.static('public'));

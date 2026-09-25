@@ -134,9 +134,10 @@
     <div class="estado" id="estado-txt">Escribe un tema para empezar</div>
   </div>
 
-  <div class="form-area">
+  <div class="form-area" id="form-area">
     <input id="tema-input" type="text" placeholder="Ej: ¿Debería ser legal el aborto?" />
     <button id="btn-iniciar" onclick="iniciarDebate()">Iniciar</button>
+    <button id="btn-detener" onclick="detenerDebate()" style="display:none; background:#e35b5b;">Detener</button>
   </div>
 
   <div class="chat" id="chat">
@@ -150,6 +151,51 @@
   let debateId = null;
   let polling = null;
   let mensajesRenderizados = 0;
+  let miRol = null;
+
+  async function detectarRol() {
+    try {
+      const res = await fetch(`${API_BASE}/api/health`);
+      const data = await res.json();
+      miRol = data.rol;
+      const estadoEl = document.getElementById('estado-txt');
+      if (miRol !== 'preguntona') {
+        const btn = document.getElementById('btn-iniciar');
+        btn.disabled = true;
+        btn.title = 'Esta PC es "respondona": inicia el debate desde la otra PC.';
+        document.getElementById('form-area').style.display = 'none';
+        estadoEl.textContent = '👀 Modo espectador — buscando un debate activo...';
+        setInterval(buscarDebateActivo, 2500);
+        buscarDebateActivo();
+      } else {
+        estadoEl.textContent = `Esta PC corre el rol "preguntona" — escribe un tema para empezar`;
+      }
+    } catch (err) {
+      console.error('No se pudo detectar el rol:', err.message);
+    }
+  }
+  detectarRol();
+
+  async function buscarDebateActivo() {
+    try {
+      const res = await fetch(`${API_BASE}/api/debate/activo/actual`);
+      if (res.status === 404) return; // aún no hay ningún debate
+
+      const data = await res.json();
+      if (data._id === debateId) return; // ya estamos viendo este mismo debate
+
+      debateId = data._id;
+      mensajesRenderizados = 0;
+      document.getElementById('chat').innerHTML = '';
+      document.getElementById('tema-titulo').textContent = data.tema;
+
+      if (polling) clearInterval(polling);
+      polling = setInterval(consultarDebate, 1800);
+      consultarDebate();
+    } catch (err) {
+      console.error('Error buscando debate activo:', err.message);
+    }
+  }
 
   async function iniciarDebate() {
     const tema = document.getElementById('tema-input').value.trim();
@@ -169,7 +215,7 @@
       const res = await fetch(`${API_BASE}/api/debate/iniciar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tema, maxRondas: 3 }),
+        body: JSON.stringify({ tema }),
       });
       const data = await res.json();
 
@@ -177,6 +223,7 @@
 
       debateId = data.debateId;
       document.getElementById('typing').style.display = 'block';
+      document.getElementById('btn-detener').style.display = 'inline-block';
 
       if (polling) clearInterval(polling);
       polling = setInterval(consultarDebate, 1800);
@@ -185,6 +232,27 @@
       alert('Error: ' + err.message);
       btn.disabled = false;
       btn.textContent = 'Iniciar';
+    }
+  }
+
+  async function detenerDebate() {
+    if (!debateId) return;
+    const btnDetener = document.getElementById('btn-detener');
+    btnDetener.disabled = true;
+    try {
+      await fetch(`${API_BASE}/api/debate/${debateId}/detener`, { method: 'PATCH' });
+      clearInterval(polling);
+      document.getElementById('typing').style.display = 'none';
+      document.getElementById('btn-iniciar').disabled = false;
+      document.getElementById('btn-iniciar').textContent = 'Iniciar';
+      const estadoEl = document.getElementById('estado-txt');
+      estadoEl.textContent = '🛑 Debate detenido';
+      estadoEl.className = 'estado finalizado';
+      btnDetener.style.display = 'none';
+    } catch (err) {
+      alert('Error al detener: ' + err.message);
+    } finally {
+      btnDetener.disabled = false;
     }
   }
 
@@ -204,10 +272,12 @@
         document.getElementById('typing').style.display = 'none';
         document.getElementById('btn-iniciar').disabled = false;
         document.getElementById('btn-iniciar').textContent = 'Iniciar';
+        document.getElementById('btn-detener').style.display = 'none';
         clearInterval(polling);
       } else {
-        estadoEl.textContent = `En curso — ronda ${data.rondaActual}/${data.maxRondas}`;
+        estadoEl.textContent = `En curso — ronda ${data.rondaActual}`;
         estadoEl.className = 'estado en_curso';
+        document.getElementById('typing').style.display = 'block';
       }
     } catch (err) {
       console.error('Error consultando debate:', err);

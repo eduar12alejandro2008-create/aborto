@@ -9,7 +9,7 @@ const debateSchema = new mongoose.Schema(
     },
     maxRondas: {
       type: Number,
-      default: 3,
+      default: 5,
     },
     rondaActual: {
       type: Number,
